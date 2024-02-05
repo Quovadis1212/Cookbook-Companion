@@ -32,13 +32,13 @@
                 <input type="hidden" name="filter_criteria" value="{{ filter_criteria }}">
                 <input type="submit" name="Filter_Recipes" value="Filter Recipes" class="button"> 
             </form>
+            <h2>Recipes</h2>
+            <p>Filter: {% for ingredient in filter_criteria %}{{ ingredient }} {% endfor %}</p>
+            <form method="POST">
+                <input type="hidden" name="filter_criteria" value="{{ filter_criteria }}">
+                <input type="submit" name="Show_Recipes" value="Show Recipes" class="button"> 
+            </form>        
         </div>
-
-        <h2>Recipes</h2>
-        <form method="POST">
-            <input type="hidden" name="filter_criteria" value="{{ filter_criteria }}">
-            <input type="submit" name="Show_Recipes" value="Show Recipes" class="button"> 
-        </form>        
 
         {% if recipes %}
             {% for recipe in recipes %}
@@ -56,6 +56,7 @@
                 </div>
             {% endfor %}
         {% endif %}
+
     </div>
 </body>
 </html>

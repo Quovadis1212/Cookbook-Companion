@@ -122,10 +122,33 @@ def get_recipes_from_database(connection, filter_ingredients=None):
         sql_recipe = "SELECT DISTINCT recipes.* FROM recipes"
 
         if filter_ingredients:
-            # Using LIKE for partial matching
-            sql_conditions = " OR ".join([f"ingredients.ingredient LIKE %s" for _ in filter_ingredients])
-            filter_values = [f"%{ingredient}%" for ingredient in filter_ingredients]
-            sql_recipe += f" JOIN ingredients ON recipes.id = ingredients.recipe_id WHERE {sql_conditions}"
+            # Calculate the threshold for 50% + 1 of the filter ingredients
+            threshold = len(filter_ingredients) // 2 + 1
+            
+            # Start building the WHERE clause with parameter placeholders
+            where_clause_parts = ["ingredient LIKE %s" for _ in filter_ingredients]
+            where_clause = " OR ".join(where_clause_parts)
+            print(f"Where Clause: {where_clause}")
+            
+            # Define the SQL for the subquery with placeholders for parameters
+            matching_subquery = f"""
+            SELECT recipe_id
+            FROM ingredients
+            WHERE {where_clause}
+            GROUP BY recipe_id
+            HAVING COUNT(DISTINCT ingredient) >= %s
+            """
+            
+            # Add the calculated threshold to the end of the list of filter values
+            filter_values = [f"%{ingredient}%" for ingredient in filter_ingredients] + [threshold]
+            
+            # Prepare the final SQL query with the subquery embedded
+            sql_recipe = f"""
+            SELECT recipes.* FROM recipes
+            JOIN ({matching_subquery}) AS matching_recipes ON recipes.id = matching_recipes.recipe_id
+            """
+            
+            # Execute the query with the filter values
             cursor.execute(sql_recipe, filter_values)
         else:
             cursor.execute(sql_recipe)
