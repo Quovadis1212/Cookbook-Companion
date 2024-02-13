@@ -47,8 +47,8 @@
                     {% if recipe['is_vegetarian'] %}
                         <p>Vegetarisch</p>
                     {% endif %}
-                    <p>{{ recipe['cooking_time'] }}</p>
-                    <p>{{ recipe['ingredients'] }}</p>
+                    <p>Kochzeit: {{ recipe['cooking_time'] }} Minuten</p>
+                    <p>Zutatenliste: {{ recipe['ingredients'] }}</p>
                     {% for preparation_step in recipe['preparation_steps'] %}
                         <p>{{ preparation_step[0] }}. {{ preparation_step[1] }}</p>
                     {% endfor %}

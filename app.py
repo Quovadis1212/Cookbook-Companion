@@ -56,8 +56,16 @@ def crawl_swissmilk_recipes(NumberofRecipes):
 
         # Kochzeit finden
         kochzeit_tag = soup.find('span', class_='RecipeFacts--fact--text')
+        hours, minutes = 0, 0
         if kochzeit_tag:
-            kochzeit = kochzeit_tag.text.strip()
+            kochzeit_string = kochzeit_tag.text.strip()
+            if 'h' in kochzeit_string:
+                parts = kochzeit_string.split('h')
+                hours = int(parts[0])
+                kochzeit_string = parts[1] if len(parts) > 1 else '0'
+            if 'min' in kochzeit_string:
+                minutes = int(kochzeit_string.replace('min', ''))
+            kochzeit = hours * 60 + minutes  
         else:
             # Return an error message instead of printing
             return f'Kochzeit nicht gefunden für {gerichtname}'
@@ -122,25 +130,23 @@ def get_recipes_from_database(connection, filter_ingredients=None):
         sql_recipe = "SELECT DISTINCT recipes.* FROM recipes"
 
         if filter_ingredients:
-            # Calculate the threshold for 50% + 1 of the filter ingredients
-            threshold = len(filter_ingredients) // 2 + 1
-            
             # Start building the WHERE clause with parameter placeholders
             where_clause_parts = ["ingredient LIKE %s" for _ in filter_ingredients]
             where_clause = " OR ".join(where_clause_parts)
             print(f"Where Clause: {where_clause}")
             
-            # Define the SQL for the subquery with placeholders for parameters
+            # Define the SQL for the subquery with placeholders for parameters and ordering by the count of distinct ingredients
             matching_subquery = f"""
             SELECT recipe_id
             FROM ingredients
             WHERE {where_clause}
             GROUP BY recipe_id
-            HAVING COUNT(DISTINCT ingredient) >= %s
+            ORDER BY COUNT(DISTINCT ingredient) DESC
+            LIMIT 10
             """
             
-            # Add the calculated threshold to the end of the list of filter values
-            filter_values = [f"%{ingredient}%" for ingredient in filter_ingredients] + [threshold]
+            # No need to calculate a threshold or add it to the filter values
+            filter_values = [f"%{ingredient}%" for ingredient in filter_ingredients]
             
             # Prepare the final SQL query with the subquery embedded
             sql_recipe = f"""
@@ -154,6 +160,7 @@ def get_recipes_from_database(connection, filter_ingredients=None):
             cursor.execute(sql_recipe)
 
         recipes = cursor.fetchall()
+
         
         for recipe in recipes:
             # Assuming 'id' is the first column in the 'recipes' table
