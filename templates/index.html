@@ -12,7 +12,7 @@
             </div>
         </header>
 
-        <div class="form">
+        <div class="form" id="scraper">
             <h2>Recipe Scraper</h2>
             <form method="POST">
                 <label for="number_of_recipes">Number of Recipes:</label>
@@ -24,16 +24,31 @@
             </form>
         </div>
 
-        <div class="form">
+        <div class="form" id="show">
             <h2>Filter Recipes by Ingredient</h2>
             <form method="POST">
                 <label for="ingredient_filter">Enter Ingredients (separated by commas):</label>
-                <input type="text" id="ingredient_filter" name="ingredient_filter" placeholder="e.g., tomatoes, cheese, basil">
+                <input type="text" id="ingredient_filter" name="ingredient_filter" placeholder="e.g., tomatoes, cheese, basil"></br>
+                <label for="cooking_time_filter">Maximum Cooking Time (in minutes):</label>
+                <input type="text" id="cooking_time_filter" name="cooking_time_filter" placeholder="e.g., 120"></br>
+                <label for="is_vegetarian">Vegetarian:</label>
+                <input type="checkbox" id="is_vegetarian" name="is_vegetarian"></br></br>
                 <input type="hidden" name="filter_criteria" value="{{ filter_criteria }}">
                 <input type="submit" name="Filter_Recipes" value="Filter Recipes" class="button"> 
+                <input type="submit" name="Reset_Filter" value="Reset Filter" class="button">
             </form>
             <h2>Recipes</h2>
-            <p>Filter: {% for ingredient in filter_criteria %}{{ ingredient }} {% endfor %}</p>
+            {% if filter_criteria.get('filter_ingredients', []) | length > 0 and filter_criteria.get('filter_ingredients', [None])[0] %}
+                <p>Ingredients: {% for ingredient in filter_criteria.get('filter_ingredients', []) %}{{ ingredient }} {% endfor %}</p>
+            {% endif %}
+
+            {% if filter_criteria.get('filter_cooking_time', []) %}
+                <p>Cooking Time: {{ filter_criteria.get('filter_cooking_time', []) }}</p>
+            {% endif %}
+
+            {% if filter_criteria.get('filter_is_vegetarian', []) %}
+                <p>Vegetarian: {{ filter_criteria.get('filter_is_vegetarian', []) }}</p>
+            {% endif %}
             <form method="POST">
                 <input type="hidden" name="filter_criteria" value="{{ filter_criteria }}">
                 <input type="submit" name="Show_Recipes" value="Show Recipes" class="button"> 

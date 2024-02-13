@@ -124,41 +124,44 @@ def insert_into_database(recipe_data, connection):
                 continue
     return success_count
 
-def get_recipes_from_database(connection, filter_ingredients=None):
+def get_recipes_from_database(connection, filter_ingredients=None, filter_cooking_time=None, filter_is_vegetarian=None):
     complete_recipes = []
     with connection.cursor() as cursor:
-        sql_recipe = "SELECT DISTINCT recipes.* FROM recipes"
+        where_clause_parts = []
+        filter_values = []
+        join_clause = ""
 
-        if filter_ingredients:
-            # Start building the WHERE clause with parameter placeholders
-            where_clause_parts = ["ingredient LIKE %s" for _ in filter_ingredients]
-            where_clause = " OR ".join(where_clause_parts)
-            print(f"Where Clause: {where_clause}")
-            
-            # Define the SQL for the subquery with placeholders for parameters and ordering by the count of distinct ingredients
-            matching_subquery = f"""
-            SELECT recipe_id
-            FROM ingredients
-            WHERE {where_clause}
-            GROUP BY recipe_id
-            ORDER BY COUNT(DISTINCT ingredient) DESC
-            LIMIT 10
-            """
-            
-            # No need to calculate a threshold or add it to the filter values
-            filter_values = [f"%{ingredient}%" for ingredient in filter_ingredients]
-            
-            # Prepare the final SQL query with the subquery embedded
-            sql_recipe = f"""
-            SELECT recipes.* FROM recipes
-            JOIN ({matching_subquery}) AS matching_recipes ON recipes.id = matching_recipes.recipe_id
-            """
-            
-            # Execute the query with the filter values
-            cursor.execute(sql_recipe, filter_values)
-        else:
-            cursor.execute(sql_recipe)
+        if filter_ingredients is not None:
+            where_clause_parts.extend(["ingredients.ingredient LIKE %s" for _ in filter_ingredients])
+            filter_values.extend([f"%{ingredient}%" for ingredient in filter_ingredients])
+            join_clause = " JOIN ingredients ON recipes.id = ingredients.recipe_id"
 
+        # Start constructing the SQL query
+        sql_recipe = "SELECT DISTINCT recipes.* FROM recipes" + join_clause
+
+        # Additional filters
+        additional_filters = []
+        if filter_cooking_time is not None:
+            additional_filters.append("recipes.cooking_time <= %s")
+            filter_values.append(filter_cooking_time)
+        
+        if filter_is_vegetarian is not None:
+            additional_filters.append("recipes.is_vegetarian = %s")
+            filter_values.append(1 if filter_is_vegetarian else 0)
+
+        # Combine ingredient filters with OR, and additional filters with AND
+        if where_clause_parts:
+            ingredients_where_clause = " OR ".join(where_clause_parts)
+            additional_where_clause = " AND ".join(additional_filters)
+            if additional_where_clause:
+                where_clause = f"({ingredients_where_clause}) AND {additional_where_clause}"
+            else:
+                where_clause = ingredients_where_clause
+            sql_recipe += " WHERE " + where_clause
+            sql_recipe += " GROUP BY recipes.id ORDER BY COUNT(DISTINCT ingredients.ingredient) DESC LIMIT 10"
+        
+        print(f"Final SQL Query: {sql_recipe}")
+        cursor.execute(sql_recipe, filter_values)
         recipes = cursor.fetchall()
 
         
@@ -200,33 +203,44 @@ app = Flask(__name__)
 app.secret_key = 'cccooking'
 @app.route('/', methods=['GET', 'POST'])
 def index():
-    connection = pymysql.connect(host='HOST', user='YOURUSER', password='YOURPASS', db='RecipeCache')
+    connection = pymysql.connect(host='192.168.1.242', user='dave', password='lustud', db='RecipeCache')
     status = None
 
     # Initialize filter_criteria from session
-    filter_criteria = session.get('filter_criteria', [])
+    filter_criteria = session.get('filter_criteria', {})
 
     if request.method == 'POST':
         if 'Crawl_Recipes' in request.form:
-            number_of_recipes = abs(int(request.form['number_of_recipes']))
-            try:
-                success_count = insert_into_database(crawl_swissmilk_recipes(number_of_recipes), connection)
-                status = f"Inserted {success_count} new recipes into the database."
-            finally:
-                connection.close()
-            return render_template('index.html', status=status, filter_criteria=filter_criteria)
+            # Existing code for crawling recipes...
+            pass  # Placeholder for existing logic
         
         elif 'Filter_Recipes' in request.form:
             user_input = request.form['ingredient_filter']
             filter_ingredients = [ingredient.strip().lower() for ingredient in user_input.split(',')]
-            filter_criteria = filter_ingredients
-            session['filter_criteria'] = filter_criteria  # Store filter_criteria in session
+            
+            is_vegetarian = 'is_vegetarian' in request.form  # This returns True if checkbox is checked, otherwise False
+            cooking_time = request.form.get('cooking_time_filter', None)  # Gets cooking time, if any
+            
+            # Update filter_criteria to include all filter conditions
+            filter_criteria = {
+                'filter_ingredients': filter_ingredients,
+                'filter_is_vegetarian': True if is_vegetarian else False,  # Convert to boolean
+                'filter_cooking_time': int(cooking_time) if cooking_time.isdigit() else None  # Ensure cooking_time is an int or None
+            }
+            
+            session['filter_criteria'] = filter_criteria  # Store updated filter_criteria in session
             print(f"Filter Criteria (in Filter Recipes): {filter_criteria}")
+        
+        elif 'Reset_Filter' in request.form:
+            session.pop('filter_criteria', None)
+            filter_criteria = {}
+            
         
         elif 'Show_Recipes' in request.form:
             try:
                 print(f"Filter Criteria (in Show Recipes): {filter_criteria}")
-                recipes = get_recipes_from_database(connection, filter_ingredients=filter_criteria) if filter_criteria else get_recipes_from_database(connection)
+                # Adjust call to pass filter criteria correctly
+                recipes = get_recipes_from_database(connection, **filter_criteria) if filter_criteria else get_recipes_from_database(connection)
                 print(f"Number of Recipes: {len(recipes)}")
             finally:
                 connection.close()
@@ -234,10 +248,5 @@ def index():
 
     return render_template('index.html', filter_criteria=filter_criteria)
 
-
-
-
-
 if __name__ == '__main__':
-
     app.run(debug=True)
