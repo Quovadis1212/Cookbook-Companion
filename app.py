@@ -238,7 +238,6 @@ def index():
     user=os.environ.get('DATABASE_USER'),
     password=os.environ.get('DATABASE_PASSWORD'),
     db="RecipeCache")
-    status = None
 
     # Initialisierung der Filterkriterien aus der Sitzung
     filter_criteria = session.get('filter_criteria', {})
