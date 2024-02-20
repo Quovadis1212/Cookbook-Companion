@@ -251,12 +251,12 @@ def index():
                 number_of_recipes = abs(int(request.form['number_of_recipes']))
             else:
                 number_of_recipes = 10
-                try:
-                    success_count = insert_into_database(crawl_swissmilk_recipes(number_of_recipes), connection)
-                    status = f"Inserted {success_count} new recipes into the database."
-                finally:
-                    connection.close()
-                return render_template('index.html', status=status, filter_criteria=filter_criteria)
+            try:
+                success_count = insert_into_database(crawl_swissmilk_recipes(number_of_recipes), connection)
+                status = f"Inserted {success_count} new recipes into the database."
+            finally:
+                connection.close()
+            return render_template('index.html', status=status, filter_criteria=filter_criteria)
            
         # Verarbeitung der Filteranfrage aus dem Formular
         elif 'Filter_Recipes' in request.form:
