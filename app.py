@@ -211,8 +211,14 @@ def index():
 
     if request.method == 'POST':
         if 'Crawl_Recipes' in request.form:
-            # Existing code for crawling recipes...
-            pass  # Placeholder for existing logic
+           if 'Crawl_Recipes' in request.form:
+            number_of_recipes = abs(int(request.form['number_of_recipes']))
+            try:
+                success_count = insert_into_database(crawl_swissmilk_recipes(number_of_recipes), connection)
+                status = f"Inserted {success_count} new recipes into the database."
+            finally:
+                connection.close()
+            return render_template('index.html', status=status, filter_criteria=filter_criteria)
         
         elif 'Filter_Recipes' in request.form:
             user_input = request.form['ingredient_filter']
