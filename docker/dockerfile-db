@@ -1,0 +1,4 @@
+FROM mysql:latest
+ADD https://raw.githubusercontent.com/Quovadis1212/Cookbook-Companion/main/database.sql /docker-entrypoint-initdb.d/
+RUN chmod a+r /docker-entrypoint-initdb.d/database.sql
+
