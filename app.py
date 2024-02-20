@@ -3,41 +3,47 @@ import requests
 from bs4 import BeautifulSoup
 import pymysql
 
+from flask import Flask, render_template, request, session
+import requests
+from bs4 import BeautifulSoup
+import pymysql
+
 def crawl_swissmilk_recipes(NumberofRecipes):
-        
-    # recipe-list-URL
+    """
+    Extrahiert eine angegebene Anzahl von Rezepten von der Swissmilk-Website.
+    
+    Parameter:
+    - NumberofRecipes: Die Anzahl der Rezepte, die abgerufen werden sollen.
+    
+    Gibt eine Liste von Rezepten zurück, wobei jedes Rezept als ein Dictionary von Details dargestellt wird.
+    """
+    # URL für die Rezeptliste
     url = f'https://www.swissmilk.ch/de/rezepte-kochideen/neue-rezepte/?n={NumberofRecipes+1}'
     print(f"Requesting recipe links from: {url}")
     response = requests.get(url)
     html_content = response.text
 
-    # BeautifulSoup initialisieren
+    # BeautifulSoup initialisieren, um HTML-Inhalte zu parsen
     soup = BeautifulSoup(html_content, 'html.parser')
     recipe_links = soup.find_all('a', class_='ArticleTeaser')
 
-    # Extract and print the href attribute of each link where the link is like "/de/rezepte-kochideen/rezepte/"
+    # Extrahiere und sammle die URL jedes Rezepts
     recipe_url_list = []
     for link in recipe_links:
         recipe_url = link.get('href')
         if recipe_url.startswith('/de/rezepte-kochideen/rezepte/'):
             recipe_url = 'https://www.swissmilk.ch' + recipe_url
             recipe_url_list.append(recipe_url)
-        else:
-            continue
 
     recipe_list = []
-    # start loop over recipe_url_list and extract recipe information
+    # Durchlaufe die gesammelten URLs, um Rezeptdetails zu extrahieren
     for url in recipe_url_list:
-        # Die Anfrage an die Webseite senden und den HTML-Code abrufen
         print(f"Requesting recipes from: {url}")
         response = requests.get(url)
-
         html_content = response.text
-
-        # BeautifulSoup initialisieren
         soup = BeautifulSoup(html_content, 'html.parser')
 
-        # Gerichtname finden
+        # Extrahiere Rezeptdetails wie Namen, Zutaten, Kochzeit, etc.
         gerichtname = soup.find('h1', class_='DetailPageHeader--title').string.strip()
 
         # Zutaten finden
@@ -51,7 +57,6 @@ def crawl_swissmilk_recipes(NumberofRecipes):
                 if zutat and menge:
                     zutaten_liste.append(f"{menge.text.strip().replace('\n', '')} {zutat.text.strip()}")
         else:
-            # Return an error message instead of printing
             return f"Die Zutaten-Tabelle wurde nicht gefunden für {gerichtname}"
 
         # Kochzeit finden
@@ -67,7 +72,6 @@ def crawl_swissmilk_recipes(NumberofRecipes):
                 minutes = int(kochzeit_string.replace('min', ''))
             kochzeit = hours * 60 + minutes  
         else:
-            # Return an error message instead of printing
             return f'Kochzeit nicht gefunden für {gerichtname}'
 
         # Zubereitung finden
@@ -76,7 +80,7 @@ def crawl_swissmilk_recipes(NumberofRecipes):
 
         vegi_span = soup.find('span', class_='RecipeFacts--fact--text', string='Vegi')
 
-        # Check if Vegi span is found and if it is the second occurrence of the class 'RecipeFacts--fact--text'
+        # Vegetarisch finden
         if vegi_span and soup.find_all('span', class_='RecipeFacts--fact--text').index(vegi_span) == 1:
             vegi = True
         else:
@@ -96,50 +100,72 @@ def crawl_swissmilk_recipes(NumberofRecipes):
     return recipe_list
 
 def insert_into_database(recipe_data, connection):
+    """
+    Fügt die extrahierten Rezeptdaten in eine Datenbank ein.
+    
+    Parameter:
+    - recipe_data: Liste von Rezepten, die eingefügt werden sollen.
+    - connection: Eine Verbindung zur Datenbank.
+    
+    Gibt die Anzahl der erfolgreich eingefügten Rezepte zurück.
+    """
     success_count = 0
     for recipe in recipe_data:
             try:
                 with connection.cursor() as cursor:
-                    # Insert recipe into recipes table
+                    # SQL-Anweisungen zum Einfügen von Rezeptdetails
                     sql = "INSERT INTO recipes (name, cooking_time, is_vegetarian, url, blacklist) VALUES (%s, %s, %s, %s, %s)"
                     cursor.execute(sql, (recipe['Gerichtname'], recipe['Kochzeit'], recipe['Vegetarisch'], recipe['URL'], False))
+                    recipe_id = cursor.lastrowid  
                     
-                    recipe_id = cursor.lastrowid  # Get the last inserted id
-                    
-                    # Insert ingredients
+                    # Zutaten einfügen
                     for ingredient in recipe['Zutaten']:
                         sql = "INSERT INTO ingredients (recipe_id, ingredient) VALUES (%s, %s)"
                         cursor.execute(sql, (recipe_id, ingredient))
 
-                    # Insert preparation steps
+                    # Kochschritte einfügen
                     for step_number, step in enumerate(recipe['Zubereitung'], start=1):
                         sql = "INSERT INTO preparation_steps (recipe_id, step_number, step_description) VALUES (%s, %s, %s)"
                         cursor.execute(sql, (recipe_id, step_number, step))
                     success_count += 1
-                # Commit to save changes
+                # Commit, um die Änderungen in der Datenbank zu speichern
                 connection.commit()
             except pymysql.err.IntegrityError as e:
+                # Wenn das Rezept bereits in der Datenbank vorhanden ist, überspringen Sie es
                 print(f"Recipe {recipe['Gerichtname']} already exists in the database. Skipping...")
                 connection.rollback()
                 continue
     return success_count
 
 def get_recipes_from_database(connection, filter_ingredients=None, filter_cooking_time=None, filter_is_vegetarian=None):
+    """
+    Ruft Rezepte aus der Datenbank basierend auf den übergebenen Filterkriterien ab.
+
+    Parameter:
+    - connection: Eine Verbindung zur Datenbank.
+    - filter_ingredients: Eine Liste von Zutaten, nach denen gefiltert werden soll. Optional.
+    - filter_cooking_time: Maximale Kochzeit in Minuten, nach der gefiltert werden soll. Optional.
+    - filter_is_vegetarian: Ein Boolscher Wert, der angibt, ob nur vegetarische Rezepte abgerufen werden sollen. Optional.
+
+    Gibt eine Liste von Rezepten zurück, wobei jedes Rezept als Dictionary mit Details dargestellt wird.
+    """
     complete_recipes = []
     with connection.cursor() as cursor:
+        # Vorbereitung der Filterkriterien für die SQL-Abfrage
         where_clause_parts = []
         filter_values = []
         join_clause = ""
 
+        # Filterung nach Zutaten, wenn angegeben
         if filter_ingredients is not None:
             where_clause_parts.extend(["ingredients.ingredient LIKE %s" for _ in filter_ingredients])
             filter_values.extend([f"%{ingredient}%" for ingredient in filter_ingredients])
             join_clause = " JOIN ingredients ON recipes.id = ingredients.recipe_id"
 
-        # Start constructing the SQL query
+        # Aufbau des SQL-Queries mit optionalen Filtern
         sql_recipe = "SELECT DISTINCT recipes.* FROM recipes" + join_clause
 
-        # Additional filters
+        # Weitere Filter hinzufügen
         additional_filters = []
         if filter_cooking_time is not None:
             additional_filters.append("recipes.cooking_time <= %s")
@@ -149,7 +175,7 @@ def get_recipes_from_database(connection, filter_ingredients=None, filter_cookin
             additional_filters.append("recipes.is_vegetarian = %s")
             filter_values.append(1 if filter_is_vegetarian else 0)
 
-        # Combine ingredient filters with OR, and additional filters with AND
+        # Zusammenstellung der WHERE-Klausel
         if where_clause_parts:
             ingredients_where_clause = " OR ".join(where_clause_parts)
             additional_where_clause = " AND ".join(additional_filters)
@@ -160,32 +186,30 @@ def get_recipes_from_database(connection, filter_ingredients=None, filter_cookin
             sql_recipe += " WHERE " + where_clause
             sql_recipe += " GROUP BY recipes.id ORDER BY COUNT(DISTINCT ingredients.ingredient) DESC LIMIT 10"
         
+        # Ausführung der SQL-Abfrage und Sammeln der Ergebnisse
         print(f"Final SQL Query: {sql_recipe}")
         cursor.execute(sql_recipe, filter_values)
         recipes = cursor.fetchall()
 
-        
+        # Verarbeitung der Rezeptdaten und Rückgabe
         for recipe in recipes:
-            # Assuming 'id' is the first column in the 'recipes' table
+            # Annahme, dass 'id' die erste Spalte in der 'recipes'-Tabelle ist
             recipe_id = recipe[0]
 
+            # Abrufen der Zutaten und Zubereitungsschritte für jedes Rezept
             sql_ingredients = "SELECT ingredient FROM ingredients WHERE recipe_id = %s"
             cursor.execute(sql_ingredients, (recipe_id,))
             ingredients = cursor.fetchall()
-            
-            # Convert each ingredient tuple to its first element
             ingredients = [ingredient[0] for ingredient in ingredients]
-
             sql_preparation_steps = "SELECT step_number, step_description FROM preparation_steps WHERE recipe_id = %s"
             cursor.execute(sql_preparation_steps, (recipe_id,))
             preparation_steps = cursor.fetchall()
-
             ingredients_string = ", ".join(ingredients)
 
-            # Convert tuple data to dictionary format
+            # Zusammenstellung der Rezeptdaten als Dictionary
             recipe_data = {
                 'id': recipe_id,
-                'name': recipe[1],  # Adjust these indices based on your table structure
+                'name': recipe[1],
                 'cooking_time': recipe[2],
                 'is_vegetarian': recipe[3],
                 'blacklist': recipe[4],
@@ -193,23 +217,30 @@ def get_recipes_from_database(connection, filter_ingredients=None, filter_cookin
                 'ingredients': ingredients_string,
                 'preparation_steps': preparation_steps
             }
-            complete_recipes.append(recipe_data)  # If you want to return a list of all recipes
-
+            complete_recipes.append(recipe_data)
     return complete_recipes
 
 
-
+# Initialisierung der Flask-Anwendung mit einem geheimen Schlüssel für die Sessionverwaltung
 app = Flask(__name__)
 app.secret_key = 'cccooking'
 @app.route('/', methods=['GET', 'POST'])
+
 def index():
+    """
+    Hauptansicht der Webanwendung, die sowohl GET- als auch POST-Anfragen verarbeitet.
+    Ermöglicht das Crawlen neuer Rezepte, das Filtern von Rezepten nach bestimmten Kriterien und das Anzeigen gefilterter Rezepte.
+    """
+    # Verbindung zur Datenbank initialisieren
     connection = pymysql.connect(host='192.168.1.242', user='dave', password='lustud', db='RecipeCache')
     status = None
 
-    # Initialize filter_criteria from session
+    # Initialisierung der Filterkriterien aus der Sitzung
     filter_criteria = session.get('filter_criteria', {})
 
+    
     if request.method == 'POST':
+        # Verarbeitung der Formularanfrage zum Crawlen neuer Rezepte
         if 'Crawl_Recipes' in request.form:
            if 'Crawl_Recipes' in request.form:
             number_of_recipes = abs(int(request.form['number_of_recipes']))
@@ -219,39 +250,41 @@ def index():
             finally:
                 connection.close()
             return render_template('index.html', status=status, filter_criteria=filter_criteria)
-        
+           
+        # Verarbeitung der Filteranfrage aus dem Formular
         elif 'Filter_Recipes' in request.form:
             user_input = request.form['ingredient_filter']
             filter_ingredients = [ingredient.strip().lower() for ingredient in user_input.split(',')]
             
-            is_vegetarian = 'is_vegetarian' in request.form  # This returns True if checkbox is checked, otherwise False
-            cooking_time = request.form.get('cooking_time_filter', None)  # Gets cooking time, if any
+            is_vegetarian = 'is_vegetarian' in request.form
+            cooking_time = request.form.get('cooking_time_filter', None)
             
-            # Update filter_criteria to include all filter conditions
+            
             filter_criteria = {
                 'filter_ingredients': filter_ingredients,
-                'filter_is_vegetarian': True if is_vegetarian else False,  # Convert to boolean
-                'filter_cooking_time': int(cooking_time) if cooking_time.isdigit() else None  # Ensure cooking_time is an int or None
+                'filter_is_vegetarian': True if is_vegetarian else False, 
+                'filter_cooking_time': int(cooking_time) if cooking_time.isdigit() else None 
             }
             
-            session['filter_criteria'] = filter_criteria  # Store updated filter_criteria in session
+            session['filter_criteria'] = filter_criteria  
             print(f"Filter Criteria (in Filter Recipes): {filter_criteria}")
-        
+
+        # Zurücksetzen der Filterkriterien
         elif 'Reset_Filter' in request.form:
             session.pop('filter_criteria', None)
             filter_criteria = {}
             
-        
+        # Anzeigen von Rezepten basierend auf den Filterkriterien
         elif 'Show_Recipes' in request.form:
             try:
                 print(f"Filter Criteria (in Show Recipes): {filter_criteria}")
-                # Adjust call to pass filter criteria correctly
                 recipes = get_recipes_from_database(connection, **filter_criteria) if filter_criteria else get_recipes_from_database(connection)
                 print(f"Number of Recipes: {len(recipes)}")
             finally:
                 connection.close()
             return render_template('index.html', recipes=recipes, filter_criteria=filter_criteria)
-
+        
+    # Standard-Rückgabe, wenn keine POST-Anfrage bearbeitet wird
     return render_template('index.html', filter_criteria=filter_criteria)
 
 if __name__ == '__main__':
