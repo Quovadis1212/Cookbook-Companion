@@ -1,0 +1,21 @@
+version: '3'
+services:
+  app:
+    image: quovadis1212/cookbook-companion
+    ports:
+      - "5000:5000"
+    depends_on:
+      - db
+    environment:
+      - DATABASE_HOST=db
+      - DATABASE_USER=root
+      - DATABASE_PASSWORD=CHANGEME
+      - DATABASE_DB=RecipeCache
+  db:
+    image: mysql:5.7
+    environment:
+      MYSQL_ROOT_PASSWORD: CHANGEME
+      MYSQL_DATABASE: RecipeCache
+    volumes:
+      - ./data:/var/lib/mysql
+      - ./database.sql:/docker-entrypoint-initdb.d/database.sql

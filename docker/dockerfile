@@ -1,0 +1,22 @@
+# Verwenden eines offiziellen Python-Images als Basis
+FROM python:3.8-slim
+
+# Git installieren
+RUN apt-get update && \
+    apt-get install -y git
+
+# Setzen des Arbeitsverzeichnisses im Container
+WORKDIR /app
+
+# Klonen des GitHub-Repositories
+RUN git clone https://github.com/Quovadis1212/Cookbook-Companion.git /app
+
+# Installieren der Python-Abhängigkeiten
+# Stellen Sie sicher, dass eine requirements.txt im Repository vorhanden ist
+RUN pip install -r requirements.txt
+
+# Definieren des Ports, auf dem die Anwendung läuft
+EXPOSE 5000
+
+# Ausführen der Anwendung, wenn der Container startet
+CMD ["python", "app.py"]

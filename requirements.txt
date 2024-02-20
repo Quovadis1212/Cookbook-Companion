@@ -2,4 +2,4 @@ flask
 requests
 bs4
 pymysql
-configparser
+os

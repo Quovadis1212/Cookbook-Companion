@@ -2,7 +2,7 @@ from flask import Flask, render_template, request, session
 import requests
 from bs4 import BeautifulSoup
 import pymysql
-import configparser
+import os
 
 
 def crawl_swissmilk_recipes(NumberofRecipes):
@@ -231,16 +231,13 @@ def index():
     Hauptansicht der Webanwendung, die sowohl GET- als auch POST-Anfragen verarbeitet.
     Ermöglicht das Crawlen neuer Rezepte, das Filtern von Rezepten nach bestimmten Kriterien und das Anzeigen gefilterter Rezepte.
     """
-    # Konfiguration für Datenbank laden
-    config = configparser.ConfigParser()
-    config.read('config.ini')
 
     # Verbindung zur Datenbank initialisieren
     connection = pymysql.connect(
-    host=config['database']['host'],
-    user=config['database']['user'],
-    password=config['database']['password'],
-    db=config['database']['db'])
+    host=os.environ.get('DATABASE_HOST'),
+    user=os.environ.get('DATABASE_USER'),
+    password=os.environ.get('DATABASE_PASSWORD'),
+    db="RecipeCache")
     status = None
 
     # Initialisierung der Filterkriterien aus der Sitzung
