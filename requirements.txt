@@ -2,4 +2,3 @@ flask
 requests
 bs4
 pymysql
-os

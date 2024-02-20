@@ -1,5 +1,5 @@
 # Verwenden eines offiziellen Python-Images als Basis
-FROM python:3.8-slim
+FROM python:3.12.1
 
 # Git installieren
 RUN apt-get update && \
@@ -12,7 +12,7 @@ WORKDIR /app
 RUN git clone https://github.com/Quovadis1212/Cookbook-Companion.git /app
 
 # Installieren der Python-Abhängigkeiten
-# Stellen Sie sicher, dass eine requirements.txt im Repository vorhanden ist
+RUN pip install --upgrade pip
 RUN pip install -r requirements.txt
 
 # Definieren des Ports, auf dem die Anwendung läuft
