@@ -2,11 +2,8 @@ from flask import Flask, render_template, request, session
 import requests
 from bs4 import BeautifulSoup
 import pymysql
+import configparser
 
-from flask import Flask, render_template, request, session
-import requests
-from bs4 import BeautifulSoup
-import pymysql
 
 def crawl_swissmilk_recipes(NumberofRecipes):
     """
@@ -112,6 +109,7 @@ def insert_into_database(recipe_data, connection):
     success_count = 0
     for recipe in recipe_data:
             try:
+
                 with connection.cursor() as cursor:
                     # SQL-Anweisungen zum Einfügen von Rezeptdetails
                     sql = "INSERT INTO recipes (name, cooking_time, is_vegetarian, url, blacklist) VALUES (%s, %s, %s, %s, %s)"
@@ -127,9 +125,9 @@ def insert_into_database(recipe_data, connection):
                     for step_number, step in enumerate(recipe['Zubereitung'], start=1):
                         sql = "INSERT INTO preparation_steps (recipe_id, step_number, step_description) VALUES (%s, %s, %s)"
                         cursor.execute(sql, (recipe_id, step_number, step))
-                    success_count += 1
                 # Commit, um die Änderungen in der Datenbank zu speichern
                 connection.commit()
+                success_count += 1
             except pymysql.err.IntegrityError as e:
                 # Wenn das Rezept bereits in der Datenbank vorhanden ist, überspringen Sie es
                 print(f"Recipe {recipe['Gerichtname']} already exists in the database. Skipping...")
@@ -188,8 +186,10 @@ def get_recipes_from_database(connection, filter_ingredients=None, filter_cookin
         
         # Ausführung der SQL-Abfrage und Sammeln der Ergebnisse
         print(f"Final SQL Query: {sql_recipe}")
+        print(f"Filter Values: {filter_values}")
         cursor.execute(sql_recipe, filter_values)
         recipes = cursor.fetchall()
+        print(f"Recipes: {recipes}")
 
         # Verarbeitung der Rezeptdaten und Rückgabe
         for recipe in recipes:
@@ -204,7 +204,7 @@ def get_recipes_from_database(connection, filter_ingredients=None, filter_cookin
             sql_preparation_steps = "SELECT step_number, step_description FROM preparation_steps WHERE recipe_id = %s"
             cursor.execute(sql_preparation_steps, (recipe_id,))
             preparation_steps = cursor.fetchall()
-            ingredients_string = ", ".join(ingredients)
+            ingredients_string = ", ".join([str(ingredient) for ingredient in ingredients])
 
             # Zusammenstellung der Rezeptdaten als Dictionary
             recipe_data = {
@@ -231,8 +231,16 @@ def index():
     Hauptansicht der Webanwendung, die sowohl GET- als auch POST-Anfragen verarbeitet.
     Ermöglicht das Crawlen neuer Rezepte, das Filtern von Rezepten nach bestimmten Kriterien und das Anzeigen gefilterter Rezepte.
     """
+    # Konfiguration für Datenbank laden
+    config = configparser.ConfigParser()
+    config.read('config.ini')
+
     # Verbindung zur Datenbank initialisieren
-    connection = pymysql.connect(host='192.168.1.242', user='dave', password='lustud', db='RecipeCache')
+    connection = pymysql.connect(
+    host=config['database']['host'],
+    user=config['database']['user'],
+    password=config['database']['password'],
+    db=config['database']['db'])
     status = None
 
     # Initialisierung der Filterkriterien aus der Sitzung
@@ -262,12 +270,12 @@ def index():
             
             filter_criteria = {
                 'filter_ingredients': filter_ingredients,
-                'filter_is_vegetarian': True if is_vegetarian else False, 
+                'filter_is_vegetarian': True if is_vegetarian else None, 
                 'filter_cooking_time': int(cooking_time) if cooking_time.isdigit() else None 
             }
             
             session['filter_criteria'] = filter_criteria  
-            print(f"Filter Criteria (in Filter Recipes): {filter_criteria}")
+            
 
         # Zurücksetzen der Filterkriterien
         elif 'Reset_Filter' in request.form:
@@ -277,7 +285,7 @@ def index():
         # Anzeigen von Rezepten basierend auf den Filterkriterien
         elif 'Show_Recipes' in request.form:
             try:
-                print(f"Filter Criteria (in Show Recipes): {filter_criteria}")
+                
                 recipes = get_recipes_from_database(connection, **filter_criteria) if filter_criteria else get_recipes_from_database(connection)
                 print(f"Number of Recipes: {len(recipes)}")
             finally:
