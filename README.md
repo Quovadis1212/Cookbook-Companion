@@ -25,7 +25,7 @@
 
 1. **Docker Compose file abrufen**
 
-    Rufen sie die Datei `docker-compose.yml` von folgendem Link auf und speichern sie sie: 
+    Rufen sie die Datei `docker-compose.yml` von folgendem Link auf und speichern sie sie: https://github.com/Quovadis1212/Cookbook-Companion/blob/main/docker/docker-compose.yml
 
 2. **Docker Compose verwenden**
 
